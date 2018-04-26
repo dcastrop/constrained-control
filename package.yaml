@@ -1,6 +1,6 @@
-name:                typeable-control
+name:                constrained-control
 version:             0.1.0
-github:              dcastrop/typeable-control
+github:              dcastrop/constrained-control
 license:             BSD3
 author:              David Castro-Perez <david.castro.dcp@gmail.com>
 maintainer:          David Castro-Perez <david.castro.dcp@gmail.com>
@@ -14,6 +14,7 @@ synopsis:            Redefinition of Control.Category and Control.Arrow classes
 description:         Please see the README on Github at <https://github.com/dcastrop/constrained-control#readme>
 dependencies:
 - base >= 4.7 && < 5
+- constraints >= 0.9 && < 1.0
 
 library:
   source-dirs: src
