@@ -1,0 +1,23 @@
+name:                typeable-control
+version:             0.1.0
+github:              dcastrop/typeable-control
+license:             BSD3
+author:              David Castro-Perez <david.castro.dcp@gmail.com>
+maintainer:          David Castro-Perez <david.castro.dcp@gmail.com>
+copyright:           2018 David Castro-Perez
+extra-source-files:
+- README.md
+- ChangeLog.md
+synopsis:            Redefinition of Control.Category and Control.Arrow classes,
+                     with a dependency on Data.Typeable.
+# category:            Web
+description:         Please see the README on Github at <https://github.com/dcastrop/typeable-control#readme>
+dependencies:
+- base >= 4.7 && < 5
+- constraints >= 0.9.1 && < 1.0
+
+
+library:
+  source-dirs: src
+  ghc-options:
+  - -Wall
