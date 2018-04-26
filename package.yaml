@@ -8,14 +8,12 @@ copyright:           2018 David Castro-Perez
 extra-source-files:
 - README.md
 - ChangeLog.md
-synopsis:            Redefinition of Control.Category and Control.Arrow classes,
-                     with a dependency on Data.Typeable.
+synopsis:            Redefinition of Control.Category and Control.Arrow classes
+                     with arbitrary class constraints on the elements.
 # category:            Web
-description:         Please see the README on Github at <https://github.com/dcastrop/typeable-control#readme>
+description:         Please see the README on Github at <https://github.com/dcastrop/constrained-control#readme>
 dependencies:
 - base >= 4.7 && < 5
-- constraints >= 0.9.1 && < 1.0
-
 
 library:
   source-dirs: src
