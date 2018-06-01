@@ -12,6 +12,7 @@ module Control.Constrained.Category
   , (<<<)
   ) where
 
+import qualified Prelude
 import Prelude hiding ( (.), id )
 
 import Data.Constraint
@@ -21,10 +22,14 @@ infixr 9 .
 infixr 1 >>>, <<<
 
 class Category (t :: * -> * -> *) where
-  type C t (a :: *) = (r :: Constraint) | r -> a t
+  type C t (a :: *) :: Constraint
   id :: forall a. C t a => t a a
   (.) :: forall a b c. (C t a, C t b, C t c) => t b c -> t a b -> t a c
 
+instance Category (->) where
+  type C (->) a = ()
+  id = Prelude.id
+  (.) = (Prelude..)
 
 -- | Right-to-left composition
 (<<<) :: (Category cat, C cat a, C cat b, C cat c)

@@ -1,13 +1,15 @@
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE FlexibleInstances #-}
 module Control.Constrained.Arrow
   ( Arrow (..)
+  , Const (..)
   , ArrowChoice (..)
   ) where
 
 import qualified Prelude
-import Prelude hiding ( (.), id, fst, snd)
+import Prelude hiding ( (.), id, fst, snd, const)
 
 import Control.Constrained.Category
 
@@ -16,19 +18,22 @@ infixr 3 &&&
 infixr 2 +++
 infixr 2 |||
 
+class Category t => Const a t where
+  const :: (C t a, C t b) => a -> t b a
+
 class Category t => Arrow t where
 
   arr :: (C t b, C t c) => String -> (b -> c) -> t b c
 
-  fst :: (C t a, C t (a,b))
+  fst :: (C t a, C t b, C t (a, b))
       => t (a,b) a
   fst = arr "fst" Prelude.fst
 
-  snd :: (C t b, C t (a,b))
+  snd :: (C t b, C t a, C t (a, b))
       => t (a,b) b
   snd = arr "snd" Prelude.snd
 
-  first :: ( C t c, C t b, C t (a,c) , C t (b,c), C t (c, b) )
+  first :: ( C t a, C t c, C t b, C t (a,c) , C t (b,c), C t (c, b) )
         => t a b -> t (a, c) (b, c)
   first = (*** id)
 
@@ -37,7 +42,7 @@ class Category t => Arrow t where
          => t a b -> t (c, a) (c, b)
   second = (id ***)
 
-  (***) :: ( C t b, C t a', C t b', C t (a, b), C t (a', b'), C t (a', b)
+  (***) :: ( C t a, C t b, C t a', C t b', C t (a, b), C t (a', b'), C t (a', b)
           , C t (b, a') , C t (b', a') )
          => t a a' -> t b b' -> t (a,b) (a',b')
   f *** g = first f >>> arr "swap" swap >>> first g >>> arr "swap" swap
@@ -48,18 +53,27 @@ class Category t => Arrow t where
         => t a b -> t a c -> t a (b,c)
   f &&& g = arr "dup" (\b -> (b,b)) >>> f *** g
 
+instance Arrow (->) where
+
+  arr _ f = f
+
+  f *** g = \(a, b) -> (f a, g b)
+
+instance Const a (->) where
+  const = Prelude.const
+
 
 class Arrow a => ArrowChoice a where
 
-  inl :: ( C a b, C a (Either b c) )
+  inl :: ( C a b, C a c, C a (Either b c) )
       => a b (Either b c)
   inl = arr "inl" Left
 
-  inr :: ( C a c, C a (Either b c) )
+  inr :: ( C a c, C a b, C a (Either b c) )
       => a c (Either b c)
   inr = arr "inr" Right
 
-  left :: ( C a d, C a c,  C a (Either d b), C a (Either c d)
+  left :: ( C a b, C a d, C a c,  C a (Either d b), C a (Either c d)
          , C a (Either d b), C a (Either b d), C a (Either d c) )
        => a b c -> a (Either b d) (Either c d)
   left = (+++ id)
@@ -71,7 +85,7 @@ class Arrow a => ArrowChoice a where
         => a b c -> a (Either d b) (Either d c)
   right = (id +++)
 
-  (+++) :: ( C a b', C a c, C a c'
+  (+++) :: ( C a b, C a b', C a c, C a c'
           , C a (Either b b')
           , C a (Either c b')
           , C a (Either c c')
@@ -86,7 +100,7 @@ class Arrow a => ArrowChoice a where
       mirror (Left x) = Right x
       mirror (Right y) = Left y
 
-  (|||) :: ( C a c, C a d
+  (|||) :: ( C a b, C a c, C a d
           , C a (Either d c)
           , C a (Either d d)
           , C a (Either b c)
@@ -97,3 +111,12 @@ class Arrow a => ArrowChoice a where
     where
       untag (Left x) = x
       untag (Right y) = y
+
+instance ArrowChoice (->) where
+
+  inl = Left
+  inr = Right
+
+  f +++ g = \case
+    Left x -> Left (f x)
+    Right x -> Right (g x)
