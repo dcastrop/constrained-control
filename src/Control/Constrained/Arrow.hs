@@ -1,11 +1,14 @@
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE GADTs #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE FlexibleInstances #-}
 module Control.Constrained.Arrow
   ( Arrow (..)
   , Const (..)
   , ArrowChoice (..)
+  , CDict (..)
   ) where
 
 import qualified Prelude
@@ -21,39 +24,51 @@ infixr 2 |||
 class Category t => Const a t where
   const :: (C t a, C t b) => a -> t b a
 
+data CDict t a where
+  CDict :: (Category t, C t a) => CDict t a
+
 class Category t => Arrow t where
+
+  pairDict :: (C t a, C t b) => CDict t (a,b)
 
   arr :: (C t b, C t c) => String -> (b -> c) -> t b c
 
-  fst :: (C t a, C t b, C t (a, b))
-      => t (a,b) a
-  fst = arr "fst" Prelude.fst
+  fst :: forall a b. (C t a, C t b) => t (a,b) a
+  fst = case pairDict :: CDict t (a, b) of
+          CDict -> arr "fst" Prelude.fst
 
-  snd :: (C t b, C t a, C t (a, b))
-      => t (a,b) b
-  snd = arr "snd" Prelude.snd
+  snd :: forall a b. (C t b, C t a) => t (a,b) b
+  snd = case pairDict :: CDict t (a, b) of
+          CDict -> arr "snd" Prelude.snd
 
-  first :: ( C t a, C t c, C t b, C t (a,c) , C t (b,c), C t (c, b) )
+  first :: ( C t a, C t c, C t b )
         => t a b -> t (a, c) (b, c)
   first = (*** id)
 
-  second :: ( C t c, C t a, C t b
-           , C t (a,c) , C t (b,c), C t (c, a), C t (c, b) )
+  second :: ( C t c, C t a, C t b )
          => t a b -> t (c, a) (c, b)
   second = (id ***)
 
-  (***) :: ( C t a, C t b, C t a', C t b', C t (a, b), C t (a', b'), C t (a', b)
-          , C t (b, a') , C t (b', a') )
+  (***) :: forall a b a' b'. ( C t a, C t b, C t a', C t b' )
          => t a a' -> t b b' -> t (a,b) (a',b')
-  f *** g = first f >>> arr "swap" swap >>> first g >>> arr "swap" swap
+  f *** g = case ( pairDict :: CDict t (a , b)
+                 , pairDict :: CDict t (a', b)
+                 , pairDict :: CDict t (a', b')
+                 , pairDict :: CDict t (b, a')
+                 , pairDict :: CDict t (b', a')
+                 ) of
+              (CDict, CDict, CDict, CDict, CDict) ->
+                first f >>> arr "swap" swap >>> first g >>> arr "swap" swap
     where swap ~(x,y) = (y,x)
 
-  (&&&) :: ( C t a, C t b, C t c, C t (b, a), C t (a, b), C t (c, b)
-          , C t (a, a), C t (b, c) )
-        => t a b -> t a c -> t a (b,c)
-  f &&& g = arr "dup" (\b -> (b,b)) >>> f *** g
+  (&&&) :: forall a b c. ( C t a, C t b, C t c ) => t a b -> t a c -> t a (b,c)
+  f &&& g = case ( pairDict :: CDict t (a, a)
+                 , pairDict :: CDict t (b, c) ) of
+              (CDict, CDict) -> arr "dup" (\b -> (b,b)) >>> f *** g
 
 instance Arrow (->) where
+
+  pairDict = CDict
 
   arr _ f = f
 
@@ -65,54 +80,53 @@ instance Const a (->) where
 
 class Arrow a => ArrowChoice a where
 
-  inl :: ( C a b, C a c, C a (Either b c) )
-      => a b (Either b c)
-  inl = arr "inl" Left
+  eitherDict :: (C a x, C a y) => CDict a (Either x y)
 
-  inr :: ( C a c, C a b, C a (Either b c) )
-      => a c (Either b c)
-  inr = arr "inr" Right
+  inl :: forall b c. ( C a b, C a c ) => a b (Either b c)
+  inl = case eitherDict :: CDict a (Either b c) of
+          CDict -> arr "inl" Left
 
-  left :: ( C a b, C a d, C a c,  C a (Either d b), C a (Either c d)
-         , C a (Either d b), C a (Either b d), C a (Either d c) )
+  inr :: forall b c. ( C a c, C a b ) => a c (Either b c)
+  inr = case eitherDict :: CDict a (Either b c) of
+          CDict -> arr "inr" Right
+
+  left :: forall b c d. ( C a b, C a d, C a c )
        => a b c -> a (Either b d) (Either c d)
   left = (+++ id)
 
-  right :: ( C a d, C a b
-          , C a c
-          , C a (Either d b), C a (Either d c)
-          , C a (Either b d), C a (Either c d) )
+  right :: forall b c d. ( C a d, C a b , C a c )
         => a b c -> a (Either d b) (Either d c)
   right = (id +++)
 
-  (+++) :: ( C a b, C a b', C a c, C a c'
-          , C a (Either b b')
-          , C a (Either c b')
-          , C a (Either c c')
-          , C a (Either c' c)
-          , C a (Either b' b)
-          , C a (Either b' c)
-          )
+  (+++) :: forall b b' c c'. ( C a b, C a b', C a c, C a c')
         => a b c -> a b' c' -> a (Either b b') (Either c c')
-  f +++ g = left f >>> arr "mirror" mirror >>> left g >>> arr "mirror" mirror
+  f +++ g =
+    case ( eitherDict :: CDict a (Either b b')
+         , eitherDict :: CDict a (Either c b')
+         , eitherDict :: CDict a (Either c c')
+         , eitherDict :: CDict a (Either c' c)
+         , eitherDict :: CDict a (Either b' b)
+         , eitherDict :: CDict a (Either b' c)
+         ) of
+        (CDict, CDict, CDict, CDict, CDict, CDict) ->
+          left f >>> arr "mirror" mirror >>> left g >>> arr "mirror" mirror
     where
       mirror :: Either x y -> Either y x
       mirror (Left x) = Right x
       mirror (Right y) = Left y
 
-  (|||) :: ( C a b, C a c, C a d
-          , C a (Either d c)
-          , C a (Either d d)
-          , C a (Either b c)
-          , C a (Either c b)
-          , C a (Either c d) )
+  (|||) :: forall b c d. ( C a b, C a c, C a d )
           => a b d -> a c d -> a (Either b c) d
-  f ||| g = f +++ g >>> arr "untag" untag
+  f ||| g = case ( eitherDict :: CDict a (Either b c)
+                 , eitherDict :: CDict a (Either d d) ) of
+              (CDict, CDict) -> f +++ g >>> arr "untag" untag
     where
       untag (Left x) = x
       untag (Right y) = y
 
 instance ArrowChoice (->) where
+
+  eitherDict = CDict
 
   inl = Left
   inr = Right

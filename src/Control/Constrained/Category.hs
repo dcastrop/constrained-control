@@ -8,6 +8,7 @@
 {-# LANGUAGE KindSignatures #-}
 module Control.Constrained.Category
   ( Category (..)
+  , NoConstraint
   , (>>>)
   , (<<<)
   ) where
@@ -22,12 +23,15 @@ infixr 9 .
 infixr 1 >>>, <<<
 
 class Category (t :: * -> * -> *) where
-  type C t (a :: *) :: Constraint
+  type C t :: * -> Constraint
   id :: forall a. C t a => t a a
   (.) :: forall a b c. (C t a, C t b, C t c) => t b c -> t a b -> t a c
 
+class NoConstraint a where
+instance NoConstraint a where
+
 instance Category (->) where
-  type C (->) a = ()
+  type C (->) = NoConstraint
   id = Prelude.id
   (.) = (Prelude..)
 
