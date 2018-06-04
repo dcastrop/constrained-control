@@ -24,9 +24,6 @@ infixr 2 |||
 class Category t => Const a t where
   const :: (C t a, C t b) => a -> t b a
 
-data CDict t a where
-  CDict :: (Category t, C t a) => CDict t a
-
 class Category t => Arrow t where
 
   pairDict :: (C t a, C t b) => CDict t (a,b)
@@ -134,3 +131,4 @@ instance ArrowChoice (->) where
   f +++ g = \case
     Left x -> Left (f x)
     Right x -> Right (g x)
+
