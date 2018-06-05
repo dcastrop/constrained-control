@@ -1,3 +1,9 @@
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE PolyKinds #-}
+{-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE GADTs #-}
+{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE KindSignatures #-}
@@ -6,9 +12,11 @@
 {-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE PatternSynonyms #-}
 module Control.Constrained.Vector
-  ( Idx
-  , idx
-  , Vec
+  ( Vec
+  , Mod(..)
+  , enumerateM
+  , toNat
+  , vempty
   , vec
   , proj
   , len
@@ -21,25 +29,14 @@ import Control.Constrained.Category
 import Control.Constrained.Arrow
 import Data.Typeable
 import Data.Type.Natural
-import Data.Word
 
 -- | Vectors
 --
-newtype Idx (n :: Nat) = Idx Word32
-
-deriving instance Typeable (Idx n)
-
-instance Show (Idx n) where
-  show (Idx w) = show w
-
-idx :: Leq n m -> SNat n -> Idx m
-idx _ n = Idx $ sNatToInt n
-
-destruct :: (Idx 'Z -> a) -> (Idx ('S n) -> a) -> Idx m -> a
-destruct f g (Idx w) | w <= 0 = f (Idx w)
-                     | otherwise = g (Idx w)
 
 newtype Vec (n :: Nat) a = Vec [a]
+
+instance Show (Vec 'Z a) where
+  show _ = "[]"
 
 deriving instance Typeable 'Z
 deriving instance Typeable n => Typeable ('S n)
@@ -48,64 +45,145 @@ deriving instance Typeable n => Typeable (Vec n)
 instance Functor (Vec n) where
   fmap f (Vec xs) = Vec (fmap f xs)
 
-vec :: SNat n -> ((Word32, a) -> b) -> a -> Vec n b
-vec n f x = Vec $ map (f . (,x)) [0..w-1]
+vempty :: Vec 'Z a
+vempty = Vec []
+
+data Mod (m :: Nat) where
+  ModS :: Leq n m -> Mod ('S m)
+
+instance Show (Mod m) where
+  show (ModS n) = show $ toInt $ toNat n
+    where
+      toInt :: SNat n -> Int
+      toInt r = sNatToInt r
+
+test :: SNat n -> SNat m -> Maybe (Leq n m)
+test SZ m = Just $ ZeroLeq m
+test _ SZ = Nothing
+test (SS n) (SS m) = fmap SuccLeqSucc $ test n m
+
+succMod :: Mod b -> Mod b
+succMod (ModS l) =
+  case test (SS $ toNat l) b of
+    Just f -> ModS f
+    Nothing -> ModS $ ZeroLeq b
   where
-    w = sNatToInt n
+    b = boundOf l
 
-len :: Vec n a -> Idx n
-len (Vec v) = Idx $ fromIntegral $ length v
+boundOf :: Leq a b -> SNat b
+boundOf (ZeroLeq b) = b
+boundOf (SuccLeqSucc b) = SS (boundOf b)
 
-proj :: Idx n -> Vec ('S n) a -> a
-proj (Idx i) (Vec l) = l !! fromIntegral i
+plusLeq :: SingI b => SNat a -> Mod b -> Mod b
+plusLeq SZ m = m
+plusLeq (SS b) m = plusLeq b (succMod m)
 
-instance ArrowVector (->) where
-  vecDict = CDict
-  zDict = CDict
-  sDict = CDict
-  vproj = proj
-  vmap f (Vec xs) = Vec $ map f xs
-  vgen = vec
+timesLeq :: (SingI b, Num (Mod b)) => SNat a -> Mod b -> Mod b
+timesLeq SZ (ModS b) = ModS $ ZeroLeq $ boundOf b
+timesLeq (SS b) m = m + timesLeq b m
+
+instance SingI m => Num (Mod ('S m)) where
+  ModS a + b = plusLeq (toNat a) b
+  ModS a * b = timesLeq (toNat a) b
+  abs m = m
+  signum m = m
+  fromInteger n
+    | n > 0 = succMod (fromInteger $ n - 1)
+    | otherwise = ModS (ZeroLeq (sing :: SNat m))
+  _ - _ = error "unimplemented"
+
+succLeq :: Leq n m -> Leq n ('S m)
+succLeq (ZeroLeq n) = ZeroLeq (SS n)
+succLeq (SuccLeqSucc l) = SuccLeqSucc $ succLeq l
+
+incMod :: Mod m -> Mod ('S m)
+incMod (ModS l) = ModS $ succLeq l
+
+lrefl :: SNat n -> Leq n n
+lrefl SZ = ZeroLeq SZ
+lrefl (SS n) = SuccLeqSucc $ lrefl n
+
+enumerateM :: SNat n -> [Mod n]
+enumerateM SZ = []
+enumerateM (SS n) = ModS (lrefl n) : map incMod (enumerateM n)
+
+data IsSing n where
+  IsSing :: SingI n => Proxy n -> IsSing n
+
+vec :: forall n a b. SNat n -> (Mod n -> a -> b) -> a -> Vec n b
+vec n f x = Vec $ mapLL [] $ enumerateM n
+  where
+    mapLL :: [b] -> [Mod n] -> [b]
+    mapLL acc [] = acc
+    mapLL acc (l : r) = mapLL (f l x : acc) r
+
+len :: forall n a. SingI n => Vec n a -> SNat n
+len _ = sing
+
+toNat :: Leq n m -> SNat n
+toNat (ZeroLeq{}) = SZ
+toNat (SuccLeqSucc l) = SS $ toNat l
+
+proj :: forall m a. SingI m => Mod m -> Vec m a -> a
+proj (ModS n) (Vec l) = l !! sNatToInt (toNat n)
+
+isSingLe :: Leq n m -> IsSing n
+isSingLe (ZeroLeq _) = IsSing Proxy
+isSingLe (SuccLeqSucc l) = case isSingLe l of
+                   IsSing Proxy -> IsSing Proxy
 
 class Arrow t => ArrowVector t where
 
   vecDict :: (C t a, C t n) => CDict t (Vec n a)
-  zDict :: CDict t 'Z
-  sDict :: C t n => CDict t ('S n)
+  natDict :: SingI n => SNat n -> CDict t n
 
-  vproj :: forall a n. (C t a, C t n, C t (Idx n)) => Idx n -> t (Vec ('S n) a) a
-  vproj i = case sDict :: (CDict t ('S n)) of
+  vproj :: forall a m. (C t a, SingI m) => Mod m -> t (Vec m a) a
+  vproj i@(ModS l)
+    = case natDict sing :: (CDict t m) of
+        CDict ->
+          case vecDict :: CDict t (Vec m a) of
             CDict ->
-              case vecDict :: CDict t (Vec ('S n) a) of
-                CDict -> arr "proj" (proj i)
+              case isSingLe l of
+                IsSing Proxy -> arr "proj" (proj i)
 
-  vmap :: forall a b n. (C t a, C t b, C t n, C t Word32, C t (Idx n), SingI n)
+  vmap :: forall a b n. (C t a, C t b, C t n, C t (SNat n), SingI n)
        => t a b -> t (Vec n a) (Vec n b)
-  vmap f = case ( vecDict :: CDict t (Vec n a)
-                , vecDict :: CDict t (Vec n b)
-                ) of
-             (CDict, CDict) ->
-                case ( pairDict :: CDict t (Word32, Vec n a)
-                     , pairDict :: CDict t (Idx n, Vec n a) ) of
-                  (CDict, CDict) -> vgen i fun
+  vmap f = case vecDict :: CDict t (Vec n a) of
+             CDict -> vgen i fun
     where
-      i :: Idx n
-      i = Idx $ sNatToInt (sing :: SNat n)
-      fun :: C t (Word32, Vec n a) => t (Word32, Vec n a) b
-      fun = nget >>> f
-      nget :: C t (Word32, Vec n a) => t (Word32, Vec n a) a
-      nget = arr "(proj)" $ \(w, Vec x) -> x !! fromIntegral w
+      i :: SNat n
+      i = sing :: SNat n
+      fun :: SingI n => Mod n -> t (Vec n a) b
+      fun j =
+        case natDict sing :: CDict t n of
+          CDict ->
+            case vecDict :: CDict t (Vec n a) of
+              CDict -> f . vproj j
 
-  vgen :: forall a b n. ( C t a, C t b, C t n, C t (Idx n), C t Word32, SingI n )
-       => Idx n -> t (Word32, a) b -> t a (Vec n b)
-  vgen (Idx w) f = case ( pairDict :: CDict t (Word32, a)) of
-                      CDict ->
-                        case pairDict :: CDict t (Word32, a) of
-                          CDict ->
-                            case ( vecDict :: CDict t (Vec n (Word32, a))
-                              , vecDict :: CDict t (Vec n b)) of
-                              (CDict, CDict) -> repl >>> vmap f
-    where
-      repl :: (C t a, C t (Vec n (Word32, a)))
-           => t a (Vec n (Word32, a))
-      repl = arr "(repl)" $ \x -> Vec [(i, x) | i <- [0..w-1]]
+  vgen :: forall a b n. (C t a, C t b)
+       => SNat n -> (Mod n -> t a b) -> t a (Vec n b)
+--   vgen n f =
+--     case pairDict :: CDict t (Word32, a) of
+--       CDict ->
+--         case vecDict :: CDict t (Vec n (Word32, a)) of
+--           CDict ->
+--             case arrDict :: CDict t (t a b) of
+--               CDict ->
+--                 case pairDict :: CDict t (t a b, a) of
+--                   CDict ->
+--                     case (vecDict :: CDict t (Vec n (t a b, a))
+--                          , vecDict :: CDict t (Vec n b)) of
+--                       (CDict, CDict) -> repl >>> vmap app
+--     where
+--       repl :: (C t a, C t (Vec n (Word32, a))
+--              , C t (Vec n (t a b, a)) )
+--            => t a (Vec n (t a b, a))
+--       repl = arr "(repl)" $ \x -> Vec [(f i, x) | i <- [0..sNatToInt n-1]]
+
+instance ArrowVector (->) where
+  vecDict = CDict
+  natDict SZ = CDict
+  natDict (SS _) = CDict
+  vproj = proj
+  vmap f (Vec xs) = Vec $ map f xs
+  vgen = vec

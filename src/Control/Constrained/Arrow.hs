@@ -8,11 +8,15 @@ module Control.Constrained.Arrow
   ( Arrow (..)
   , Const (..)
   , ArrowChoice (..)
+  , ArrowApply (..)
   , CDict (..)
+  , curry
+  , uncurry
+  , unlift
   ) where
 
 import qualified Prelude
-import Prelude hiding ( (.), id, fst, snd, const)
+import Prelude hiding ( (.), id, fst, snd, const, curry, uncurry)
 
 import Control.Constrained.Category
 
@@ -22,7 +26,7 @@ infixr 2 +++
 infixr 2 |||
 
 class Category t => Const a t where
-  const :: (C t a, C t b) => a -> t b a
+  const :: forall b. (C t a, C t b) => a -> t b a
 
 class Category t => Arrow t where
 
@@ -132,3 +136,22 @@ instance ArrowChoice (->) where
     Left x -> Left (f x)
     Right x -> Right (g x)
 
+class Arrow t => ArrowApply t where
+  arrDict :: (C t a, C t b) => CDict t (t a b)
+  app :: forall a b. ( C t a, C t b ) => t (t a b, a) b
+
+instance ArrowApply (->) where
+  arrDict = CDict
+  app (f, x) = f x
+
+uncurry :: forall t a b c. ( ArrowApply t , C t a, C t b, C t c
+                     , C t (a, b), C t (t b c, b), C t (t b c) )
+        => (a -> t b c) -> t (a, b) c
+uncurry f = app .  (arr "_" f *** id)
+
+curry :: forall t a b c. ( Const a t, ArrowApply t, C t b, C t (a, b), C t c ,C t a )
+        => t (a, b) c -> a -> (t b c)
+curry f x = f . (const x &&& id)
+
+unlift :: forall t a b. ( Const a t, C t a, C t b, C t () ) => t a b -> a -> t () b
+unlift f x = f . const x
