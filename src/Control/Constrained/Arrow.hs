@@ -9,7 +9,6 @@ module Control.Constrained.Arrow
   , Const (..)
   , ArrowChoice (..)
   , ArrowApply (..)
-  , CDict (..)
   , curry
   , uncurry
   , unlift

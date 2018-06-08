@@ -15,7 +15,8 @@ description:         Please see the README on Github at <https://github.com/dcas
 dependencies:
 - base >= 4.7 && < 5
 - constraints >= 0.9 && < 1.0
-- type-natural >= 0.8 && < 0.9
+- singletons >= 2.4 && < 2.5
+- ivector >= 0.1 && < 0.2
 
 library:
   source-dirs: src
