@@ -27,7 +27,7 @@ class Arrow t => ArrowVector t where
           case vecDict :: CDict t (Vec m a) of
             CDict -> arr "proj" (Vec.proj i)
 
-  vec :: forall a b n. (C t a, C t b)
+  vec :: forall a b n. (C t a, C t b, KnownNat n)
       => SNat n -> (TMod n -> t a b) -> t a (Vec n b)
 
 instance ArrowVector (->) where
