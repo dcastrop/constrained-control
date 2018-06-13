@@ -17,7 +17,7 @@ import Data.Singletons.TypeLits
 
 class Arrow t => ArrowVector t where
 
-  vecDict :: (C t a, C t n) => CDict t (Vec n a)
+  vecDict :: C t a => CDict t (Vec n a)
   natDict :: KnownNat n => SNat n -> CDict t n
 
   proj :: forall a m. (C t a, KnownNat m) => TMod m -> t (Vec m a) a
