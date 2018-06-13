@@ -1,8 +1,12 @@
+{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE KindSignatures #-}
+{-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 module Control.Constrained.ArrowVector
   ( ArrowVector(..)
+  , VecC
   ) where
 
 import Prelude hiding ( (.), id )
@@ -12,26 +16,18 @@ import Control.Constrained.Arrow
 import Data.Type.Vector ( Vec )
 import qualified Data.Type.Vector as Vec
 import Data.Type.Mod
-import Data.Singletons
 import Data.Singletons.TypeLits
 
-class Arrow t => ArrowVector t where
+type VecC t v n a = (Category t, C t a, KnownNat n, C t (v n a))
 
-  vecDict :: (C t a, KnownNat n) => CDict t (Vec n a)
-  natDict :: KnownNat n => SNat n -> CDict t n
+class Arrow t => ArrowVector (v :: Nat -> * -> *) t where
 
-  proj :: forall a m. (C t a, KnownNat m) => TMod m -> t (Vec m a) a
-  proj i
-    = case natDict sing :: (CDict t m) of
-        CDict ->
-          case vecDict :: CDict t (Vec m a) of
-            CDict -> arr "proj" (Vec.proj i)
+  proj :: forall a m. VecC t v m a => TMod m -> t (v m a) a
+  -- proj i = arr "proj" (Vec.proj i)
 
-  vec :: forall a b n. (C t a, C t b, KnownNat n)
-      => SNat n -> (TMod n -> t a b) -> t a (Vec n b)
+  vec :: forall a b n. (C t a, VecC t v n b)
+      => (TMod n -> t a b) -> t a (v n b)
 
-instance ArrowVector (->) where
-  vecDict = CDict
-  natDict _ = CDict
+instance ArrowVector Vec (->) where
   proj = Vec.proj
   vec = Vec.vec

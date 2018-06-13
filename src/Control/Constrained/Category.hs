@@ -27,6 +27,7 @@ infixr 1 >>>, <<<
 
 class Category (t :: * -> * -> *) where
   type C t :: k -> Constraint
+  type C t = NoConstraint
   id :: forall a. C t a => t a a
   (.) :: forall a b c. (C t a, C t b, C t c) => t b c -> t a b -> t a c
 
@@ -37,7 +38,6 @@ data CDict t a where
   CDict :: (Category t, C t a) => CDict t a
 
 instance Category (->) where
-  type C (->) = NoConstraint
   id = Prelude.id
   (.) = (Prelude..)
 
