@@ -32,63 +32,63 @@ infixr 3 &&&
 infixr 2 +++
 infixr 2 |||
 
-class Category t => Const a t where
-  const :: forall b. (C t a, C t b) => a -> t b a
+class Category cc t => Const cc a t where
+  const :: forall b. (cc a, cc b) => a -> t b a
 
-type PairC t a b = (Category t, C t a, C t b, C t (a,b), C t (b, a))
+type PairC cc t a b = (Category cc t, cc a, cc b, cc (a,b), cc (b, a))
 
-class Category t => Arrow t where
+class Category cc t => Arrow cc t where
 
-  arr :: (C t b, C t c) => String -> (b -> c) -> t b c
+  arr :: (cc b, cc c) => String -> (b -> c) -> t b c
 
-  fst :: forall a b. PairC t a b => t (a,b) a
+  fst :: forall a b. PairC cc t a b => t (a,b) a
   fst = arr "fst" Prelude.fst
 
-  snd :: forall a b. PairC t a b => t (a,b) b
+  snd :: forall a b. PairC cc t a b => t (a,b) b
   snd = arr "snd" Prelude.snd
 
-  first :: (PairC t a c, PairC t b c) => t a b -> t (a, c) (b, c)
+  first :: (PairC cc t a c, PairC cc t b c) => t a b -> t (a, c) (b, c)
   first = (*** id)
 
-  second :: (PairC t c a, PairC t c b) => t a b -> t (c, a) (c, b)
+  second :: (PairC cc t c a, PairC cc t c b) => t a b -> t (c, a) (c, b)
   second = (id ***)
 
-  (***) :: forall a b a' b'. (PairC t a b, PairC t a' b', PairC t a' b, PairC t b a')
+  (***) :: forall a b a' b'. (PairC cc t a b, PairC cc t a' b', PairC cc t a' b, PairC cc t b a')
         => t a a' -> t b b' -> t (a,b) (a',b')
   f *** g = first f >>> arr "swap" swap >>> first g >>> arr "swap" swap
     where swap ~(x,y) = (y,x)
 
-  (&&&) :: forall a b c. (PairC t a a, PairC t a b, PairC t b c) => t a b -> t a c -> t a (b,c)
+  (&&&) :: forall a b c. (PairC cc t a a, PairC cc t a b, PairC cc t b c) => t a b -> t a c -> t a (b,c)
   f &&& g = arr "dup" (\b -> (b,b)) >>> f *** g
 
-instance Arrow (->) where
+instance Arrow NoConstraint (->) where
 
   arr _ f = f
 
   f *** g = \(a, b) -> (f a, g b)
 
-instance Const a (->) where
+instance Const NoConstraint a (->) where
   const = Prelude.const
 
-type SumC t a b = (Category t, C t a, C t b, C t (Either a b), C t (Either b a))
+type SumC cc t a b = (Category cc t, cc a, cc b, cc (Either a b), cc (Either b a))
 
-class Arrow a => ArrowChoice a where
+class Arrow cc a => ArrowChoice cc a where
 
-  inl :: forall b c. SumC a b c => a b (Either b c)
+  inl :: forall b c. SumC cc a b c => a b (Either b c)
   inl = arr "inl" Left
 
-  inr :: forall b c. SumC a b c => a c (Either b c)
+  inr :: forall b c. SumC cc a b c => a c (Either b c)
   inr = arr "inr" Right
 
-  left :: forall b c d. (SumC a b d, SumC a c d)
+  left :: forall b c d. (SumC cc a b d, SumC cc a c d)
        => a b c -> a (Either b d) (Either c d)
   left = (+++ id)
 
-  right :: forall b c d. (SumC a d b, SumC a d c)
+  right :: forall b c d. (SumC cc a d b, SumC cc a d c)
         => a b c -> a (Either d b) (Either d c)
   right = (id +++)
 
-  (+++) :: forall b b' c c'. (SumC a b b', SumC a c c', SumC a c b')
+  (+++) :: forall b b' c c'. (SumC cc a b b', SumC cc a c c', SumC cc a c b')
         => a b c -> a b' c' -> a (Either b b') (Either c c')
   f +++ g = left f >>> arr "mirror" mirror >>> left g >>> arr "mirror" mirror
     where
@@ -96,14 +96,14 @@ class Arrow a => ArrowChoice a where
       mirror (Left x) = Right x
       mirror (Right y) = Left y
 
-  (|||) :: forall b c d. (SumC a b c, SumC a d d, SumC a d c)
+  (|||) :: forall b c d. (SumC cc a b c, SumC cc a d d, SumC cc a d c)
           => a b d -> a c d -> a (Either b c) d
   f ||| g = f +++ g >>> arr "untag" untag
     where
       untag (Left x) = x
       untag (Right y) = y
 
-instance ArrowChoice (->) where
+instance ArrowChoice NoConstraint (->) where
 
   inl = Left
   inr = Right
@@ -112,19 +112,19 @@ instance ArrowChoice (->) where
     Left x -> Left (f x)
     Right x -> Right (g x)
 
-class Arrow t => ArrowApply t where
-  app :: forall a b. (PairC t (t a b) a, C t b) => t (t a b, a) b
+class Arrow cc t => ArrowApply cc t where
+  app :: forall a b. (PairC cc t (t a b) a, cc b) => t (t a b, a) b
 
-instance ArrowApply (->) where
+instance ArrowApply NoConstraint (->) where
   app (f, x) = f x
 
-uncurry :: forall t a b c. (ArrowApply t, C t c, PairC t a b, PairC t b (t b c))
+uncurry :: forall t cc a b c. (ArrowApply cc t, cc c, PairC cc t a b, PairC cc t b (t b c))
         => (a -> t b c) -> t (a, b) c
 uncurry f = app .  (arr "_" f *** id)
 
-curry :: forall t a b c. (Arrow t, Const a t, C t c, PairC t b b, PairC t a b)
+curry :: forall t cc a b c. (Arrow cc t, Const cc a t, cc c, PairC cc t b b, PairC cc t a b)
         => t (a, b) c -> a -> (t b c)
 curry f x = f . (const x &&& id)
 
-unlift :: forall t a b. ( Const a t, C t a, C t b, C t () ) => t a b -> a -> t () b
+unlift :: forall t cc a b. (Const cc a t, cc a, cc b, cc ()) => t a b -> a -> t () b
 unlift f x = f . const x
